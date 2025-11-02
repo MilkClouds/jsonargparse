@@ -36,6 +36,8 @@ __all__ = [
     "set_parsing_settings",
 ]
 
+_UNRECOGNIZED_ARGS_ATTR = "_unrecognized_args"
+
 ClassType = TypeVar("ClassType")
 
 _UnpackGenericAlias = typing_extensions_import("_UnpackAlias")

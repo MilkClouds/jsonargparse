@@ -9,7 +9,14 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Optional, Union
 
-from ._common import Action, NonParsingAction, is_not_subclass_type, is_subclass, parser_context
+from ._common import (
+    _UNRECOGNIZED_ARGS_ATTR,
+    Action,
+    NonParsingAction,
+    is_not_subclass_type,
+    is_subclass,
+    parser_context,
+)
 from ._loaders_dumpers import get_loader_exceptions, load_value
 from ._namespace import Namespace, NSKeyError, split_key, split_key_root
 from ._optionals import _get_config_read_mode, ruamel_support
@@ -704,7 +711,30 @@ class _ActionSubCommands(_SubParsersAction):
             subparser = self._name_parser_map[subcommand]
             subnamespace = namespace.get(subcommand).clone() if subcommand in namespace else None
             kwargs = dict(_skip_validation=True, **parse_kwargs.get())
-            namespace[subcommand] = subparser.parse_args(arg_strings, namespace=subnamespace, **kwargs)
+            # 1. Original from jsonargparse
+            # namespace[subcommand] = subparser.parse_args(arg_strings, namespace=subnamespace, **kwargs)
+
+            # 2. Original from argparse
+            # subnamespace, arg_strings = parser.parse_known_args(arg_strings, None)
+            # for key, value in vars(subnamespace).items():
+            #     setattr(namespace, key, value)
+
+            # if arg_strings:
+            #     vars(namespace).setdefault(_UNRECOGNIZED_ARGS_ATTR, [])
+            #     getattr(namespace, _UNRECOGNIZED_ARGS_ATTR).extend(arg_strings)
+
+            # parse_known_args does not accept **kwargs, only args and namespace
+            subnamespace = subnamespace or Namespace()
+            cfg = subparser._parse_defaults_and_environ(kwargs.get("defaults", True), kwargs.get("env", None))
+            if namespace:
+                cfg = subparser.merge_config(subnamespace, cfg)
+            subnamespace, arg_strings = subparser.parse_known_args(arg_strings, namespace=cfg)
+            subnamespace, arg_strings = subparser._positional_optionals(subnamespace, arg_strings)
+            namespace[subcommand] = subnamespace
+
+            if arg_strings:
+                vars(namespace).setdefault(_UNRECOGNIZED_ARGS_ATTR, [])
+                getattr(namespace, _UNRECOGNIZED_ARGS_ATTR).extend(arg_strings)
 
     @staticmethod
     @contextmanager

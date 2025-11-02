@@ -32,6 +32,7 @@ from ._actions import (
     previous_config,
 )
 from ._common import (
+    _UNRECOGNIZED_ARGS_ATTR,
     InstantiatorCallable,
     InstantiatorsDictType,
     LoggerProperty,
@@ -287,13 +288,21 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, ArgumentLinking, Logg
     def parse_known_args(self, args=None, namespace=None):
         """Raises NotImplementedError to dissuade its use, since typos in configs would go unnoticed."""
         caller_mod = inspect.getmodule(inspect.stack()[1][0])
-        caller = None if caller_mod is None else caller_mod.__package__
+        caller = None if caller_mod is None else getattr(caller_mod, "__package__", None)
         if caller not in {"jsonargparse", "argcomplete"}:
-            raise NotImplementedError(
-                "parse_known_args not implemented to dissuade its use, since typos in configs would go unnoticed."
-            )
+            # raise NotImplementedError(
+            #     "parse_known_args not implemented to dissuade its use, since typos in configs would go unnoticed."
+            # )
+            if args is None:
+                args = sys.argv[1:]
+            else:
+                args = list(args)
+                if not all(isinstance(a, str) for a in args):
+                    self.error(f"All arguments are expected to be strings: {args}")
 
-        namespace = argcomplete_namespace(caller, self, namespace)
+            namespace = Namespace()
+        else:
+            namespace = argcomplete_namespace(caller, self, namespace)
 
         try:
             with (
@@ -307,6 +316,10 @@ class ArgumentParser(ParserDeprecations, ActionsContainer, ArgumentLinking, Logg
                 namespace, args = self._parse_known_args(args, namespace, **kwargs)
         except argparse.ArgumentError as ex:
             self.error(str(ex), ex)
+
+        if hasattr(namespace, _UNRECOGNIZED_ARGS_ATTR):
+            args.extend(getattr(namespace, _UNRECOGNIZED_ARGS_ATTR))
+            delattr(namespace, _UNRECOGNIZED_ARGS_ATTR)
 
         return namespace, args
 
